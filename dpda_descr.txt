@@ -1,0 +1,7 @@
+alphabet = {0,1}
+states = {p,q,r}
+initial=p
+final={r}
+stack = {A,Z}
+bottom = Z
+transitions={(p,0,Z)->(p,AZ), (p,0,A)->(p,AA), (p,$,Z)->(r,Z), (p,1,A)->(q,), (q,1,A)->(q,), (q,$,Z)->(r,Z)}

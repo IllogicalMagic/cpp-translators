@@ -1,0 +1,5 @@
+alphabet={a,b,c}
+states={A,B}
+initial=A
+final={A}
+transitions={(A,a)->B, (A,b)->B, (B,c)->A}
