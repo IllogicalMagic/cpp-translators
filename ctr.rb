@@ -237,12 +237,25 @@ puts ctr.states
 Dir.mkdir(output) unless Dir.exist?(output)
 Dir.chdir(output)
 
+def generate_init_ctr
+  File.open("init_ctr.h", "w") do |f|
+    f << "/* init_ctr.h */\n\n"
+    f << "#if __COUNTER__\n"
+    f << "#endif\n"
+    5.times do
+      f << "#include \"stab.h\"\n"
+    end
+    f << "\n#define IS_ZERO 1\n"
+  end
+end
+
 def generate_header(ctr)
   header = "ctr.h"
   File.open(header, "w") do |f|
     f << "/* #{header} */\n\n"
-    f << "#define C __COUNTER__\n"
-    f << "#define L __LINE__\n"
+    f << "#define LA (__LINE__ >> 2)\n"
+    f << "#define CHECK2 ((LA - 1) & LA)\n"
+    f << "#define CHECKSUB2 ((CHECK2 - 1) & CHECK2)\n"
     f << "#define I __INCLUDE_LEVEL__\n\n"
     f << "/* alphabet */\n"
     logsize = (ctr.alphabet.size - 1).bit_length + 1
@@ -256,7 +269,8 @@ def generate_header(ctr)
     f << "#define A_SIZE #{logsize}\n\n"
     
     f << "#define GET_SYM ((INPUT >> ((I - 3) * A_SIZE)) & A_MASK)\n\n"
-    f << "#define IS_ZERO 1\n\n"
+
+    f << "#include \"init_ctr.h\"\n\n"
 
     f << "/* include initial state */\n"
     f << "#include \"ctr_#{ctr.initial}.h\"\n"
@@ -267,6 +281,7 @@ def generate_get_sym(ctr)
   header = "get_sym.h"
   File.open(header, "w") do |f|
     f << "/* #{header} */\n\n"
+    f << "#undef CUR_SYM\n"
     cond = "if"
     ctr.alphabet.each do |a|
       f << "##{cond} GET_SYM == A_#{a}\n"
@@ -279,81 +294,80 @@ def generate_get_sym(ctr)
   end
 end
 
-def generate_action(f, n, sum, ctr_pad_bits, dec)
-  f << "#line C\n"
-  ctr_pad = 1 << ctr_pad_bits
-  line = 0
-  cond = "if"
-  (1...ctr_pad).each do |c|
-    f << "##{cond} ((L - #{line}) & #{ctr_pad - 1}) == #{ctr_pad - c}\n"
-    stab = (["C"] * c).join(",")
-    f << "  #if #{stab}\n"
-    f << "  #endif\n"
-    line += 3
-    cond = "elif"
-  end
-  stab = (["C"] * ctr_pad).join(",")
-  f << "#else\n"
-  f << "  #if #{stab}\n"
-  f << "  #endif\n"
-  f << "#endif\n"
-  f << "// #{ctr_pad}\n\n"
-  
-  (n - 1).times do |i|
-    f << "#if #{stab}\n"
+def generate_stab
+  File.open("stab.h", "w") do |f|
+    f << "/* stab.h */\n\n"
+    f << "#if (__COUNTER__ & 3) != 0\n"
+    f << "  #include \"stab.h\"\n"
     f << "#endif\n"
   end
-  f << "// #{ctr_pad * n}\n\n"
+end
 
-  f << "#ifndef ONCE\n"
-  md = "((L >> #{ctr_pad_bits}) % #{sum})"
-  f << "  #define R #{md}\n"
-  f << "  #define Q1 (#{md} % #{n})\n"
-  f << "  #define Q2 (#{md} % #{sum - n})\n"
-  f << "  #line C\n"
-  prom_check = "(R != 0 && Q1 == 0) || (R != 0 && Q2 == 0)"
-  f << "  #if #{prom_check}\n"
-  f << "    #define ONCE\n"
-  f << "    #include \"inc.h\"\n"
-  f << "    #include \"dec.h\"\n"
-  f << "    #undef ONCE\n"
-  f << "    #line C\n"
-  f << "    #if #{prom_check}\n"
-  f << "      #define ONCE\n"
-  f << "      #include \"inc.h\"\n"
-  f << "      #include \"dec.h\"\n"
-  f << "      #undef ONCE\n"
-  f << "    #endif\n"
-  f << "  #endif\n\n"
-  f << "  #undef IS_ZERO\n"
-  if dec
-    f << "  #line C\n"
-    f << "  #if R == 0\n"
-    f << "    #define IS_ZERO 1\n"
-    f << "  #else\n"
-    f << "    #define IS_ZERO 0\n"
-    f << "  #endif\n"
-  else
-    f << "  #define IS_ZERO 0\n"
+def generate_next2pow
+  File.open("next2pow.h", "w") do |f|
+    f << "/* next2pow.h */\n\n"
+    f << "#include \"stab.h\"\n\n"
+    f << "#line __COUNTER__\n"
+    f << "#if CHECK2 != 0\n"
+    f << "  #include \"next2pow.h\"\n"
+    f << "#endif\n"
   end
-  f << "#endif\n"
+end
+
+def generate_advance_msb
+  File.open("advance_msb.h", "w") do |f|
+    f << "/* advance_msb.h */\n\n"
+    f << "#include \"stab.h\"\n\n"
+    f << "#line __COUNTER__\n"
+    f << "#if CHECKSUB2 != 0\n"
+    f << "  #include \"advance_msb.h\"\n"
+    f << "  #include \"stab.h\"\n"
+    f << "#else\n"
+    f << "  #include \"next2pow.h\"\n"
+    f << "  #include \"stab.h\"\n"
+    f << "#endif\n"
+  end
+end
+
+def generate_inc
+  File.open("inc.h", "w") do |f|
+    f << "/* inc.h */\n\n"
+    f << "#include \"advance_msb.h\"\n\n"
+    f << "#undef IS_ZERO\n"
+    f << "#define IS_ZERO 0\n"
+  end
+end
+
+def generate_advance_lsb
+  File.open("advance_lsb.h", "w") do |f|
+    f << "/* advance_lsb.h */\n\n"
+    f << "#include \"stab.h\"\n\n"
+    f << "#line __COUNTER__\n"
+    f << "#if CHECKSUB2 != 0\n"
+    f << "  #include \"advance_lsb.h\"\n"
+    f << "#endif\n"
+  end
+end
+
+def generate_dec
+  File.open("dec.h", "w") do |f|
+    f << "/* dec.h */\n\n"
+    f << "#include \"advance_lsb.h\"\n\n"
+    f << "#line __COUNTER__\n"
+    f << "#if ((LA >> 2) & LA) != 0\n"
+    f << "  #undef IS_ZERO\n"
+    f << "  #define IS_ZERO 1\n"
+    f << "#endif\n"
+  end
 end
 
 def generate_actions
-  i = 5 # prime
-  d = 7 # prime
-  s = i + d
-  c_pad = 2
-  header = "inc.h"
-  File.open(header, "w") do |f|
-    f << "/* #{header} */\n\n"
-    generate_action(f, i, s, c_pad, false)
-  end
-  header = "dec.h"
-  File.open(header, "w") do |f|
-    f << "/* #{header} */\n\n"
-    generate_action(f, d, s, c_pad, true)
-  end
+  generate_stab
+  generate_next2pow
+  generate_advance_msb
+  generate_inc
+  generate_advance_lsb
+  generate_dec
 end
 
 def get_sym(sym)
@@ -435,6 +449,7 @@ def generate_states(ctr)
 end
 
 generate_header(ctr)
+generate_init_ctr
 generate_get_sym(ctr)
 generate_actions
 generate_states(ctr)
