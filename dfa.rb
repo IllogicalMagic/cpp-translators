@@ -126,6 +126,8 @@ class DFA
     end
 
     state_to_next = Hash.new{ |h, k| h[k] = Hash.new }
+    # initialize state to next with empty states
+    states.each{ |s| state_to_next[s] }
     transitions.each do |trans|
       unless states.include?(trans.cur)
         raise "Transition #{trans} from unknown state #{trans.cur}"

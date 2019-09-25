@@ -263,6 +263,8 @@ class DPDA
     transitions = atomize_transitions(transitions)
 
     state_to_next = Hash.new{ |h, k| h[k] = Array.new }
+    # initialize state to next with empty states
+    states.each{ |s| state_to_next[s] }
     empty_states = Set.new
     transitions.each do |trans|
       nxt = state_to_next[trans.cur]
